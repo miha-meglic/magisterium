@@ -1,3 +1,183 @@
+<script setup>
+import MenuLayout from '~/components/MenuLayout.vue';
+import { ref } from 'vue';
+
+definePageMeta({
+  middleware: ['auth'],
+});
+
+const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const currentWeek = ref(new Date()); // Must access `.value` when working with refs
+const currentMonth = ref(new Date()); // Same here
+
+const timetableDays = ref([]);
+const timetable = ref([]);
+const calendarDays = ref([]);
+const selectedDate = ref(null);
+const popupVisible = ref(false);
+const loadingTimetable = ref(true);
+
+async function loadTimetable() {
+  loadingTimetable.value = true;
+  try {
+    const response = await fetchTimetable();
+    processTimetable(response);
+  } catch (error) {
+    console.error('Error fetching timetable:', error);
+  } finally {
+    loadingTimetable.value = false;
+  }
+}
+
+async function fetchTimetable() {
+  // Mocked API response
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+        data: [
+          {
+            time: '08:00 - 09:00',
+            subjects: {
+              Mon: 'Math',
+              Tue: 'Science',
+              Wed: 'History',
+              Thu: 'PE',
+              Fri: 'English',
+            },
+          },
+          {
+            time: '09:00 - 10:00',
+            subjects: {
+              Mon: 'Biology',
+              Tue: 'Chemistry',
+              Wed: 'Physics',
+              Thu: 'Music',
+            },
+          },
+        ],
+      });
+    }, 1000);
+  });
+}
+
+function weekRange() {
+  const startOfWeek = getStartOfWeek(currentWeek.value);
+  const endOfWeek = getEndOfWeek(currentWeek.value);
+
+  return `${startOfWeek.getDate()}.${startOfWeek.getMonth() + 1}. - ${endOfWeek.getDate()}.${endOfWeek.getMonth() + 1}.`;
+}
+
+function monthAndYear() {
+  return `${currentMonth.value.toLocaleString('default', {
+    month: 'long',
+  })} ${currentMonth.value.getFullYear()}`;
+}
+
+function processTimetable(response) {
+  timetableDays.value = response.days;
+  timetable.value = response.data.map((slot) => ({
+    time: slot.time,
+    subjects: timetableDays.value.reduce((acc, day) => {
+      acc[day] = slot.subjects[day] || '';
+      return acc;
+    }, {}),
+  }));
+}
+
+function generateCalendarDays() {
+  const firstDay = new Date(
+      currentMonth.value.getFullYear(),
+      currentMonth.value.getMonth(),
+      1
+  );
+  const lastDay = new Date(
+      currentMonth.value.getFullYear(),
+      currentMonth.value.getMonth() + 1,
+      0
+  );
+  const firstDayOfWeek = firstDay.getDay();
+
+  const days = [];
+  for (let i = 0; i < firstDayOfWeek; i++) {
+    days.push({ day: '', notifications: 0, isPlaceholder: true });
+  }
+  for (let i = 1; i <= lastDay.getDate(); i++) {
+    const notificationCount = Math.floor(Math.random() * 6); // Random notifications for demonstration
+    days.push({ day: i, notifications: notificationCount, isPlaceholder: false });
+  }
+
+  calendarDays.value = days;
+}
+
+function getStartOfWeek(date) {
+  const start = new Date(date);
+  const day = start.getDay();
+  start.setDate(start.getDate() - day + 1); // Adjust for Monday as start of week
+  return start;
+}
+
+function getEndOfWeek(date) {
+  const end = new Date(date);
+  const day = end.getDay();
+  end.setDate(end.getDate() + (7 - day));
+  return end;
+}
+
+function loadPreviousWeek() {
+  currentWeek.value.setDate(currentWeek.value.getDate() - 7);
+  loadTimetable();
+}
+
+function loadNextWeek() {
+  currentWeek.value.setDate(currentWeek.value.getDate() + 7);
+  loadTimetable();
+}
+
+function loadPreviousMonth() {
+  currentMonth.value.setMonth(currentMonth.value.getMonth() - 1);
+  generateCalendarDays();
+}
+
+function loadNextMonth() {
+  currentMonth.value.setMonth(currentMonth.value.getMonth() + 1);
+  generateCalendarDays();
+}
+
+function getValidDayClass(date) {
+  if (date.isPlaceholder) return '';
+  if (date.notifications === 0) return 'bg-gray-700';
+  return '';
+}
+
+function getNotificationClass(notificationCount) {
+  if (notificationCount === 1) return 'bg-sky-700';
+  if (notificationCount === 2) return 'bg-violet-600';
+  if (notificationCount === 3) return 'bg-fuchsia-600';
+  if (notificationCount === 4) return 'bg-pink-600';
+  return 'bg-red-600';
+}
+
+function openPopup(date) {
+  if (!date.isPlaceholder && date.notifications > 0) {
+    selectedDate.value = date;
+    popupVisible.value = true;
+  }
+}
+
+function closePopup() {
+  popupVisible.value = false;
+  selectedDate.value = null;
+}
+
+// Ensure mounted lifecycle hooks are used in setup
+onMounted(async () => {
+  await loadTimetable();
+  generateCalendarDays();
+});
+</script>
+
+
 <template>
   <MenuLayout title="Schedule">
     <main class="p-6 space-y-8">
@@ -126,156 +306,3 @@
   </MenuLayout>
 </template>
 
-<script>
-import MenuLayout from '~/components/MenuLayout.vue';
-
-export default {
-  components: {
-    MenuLayout,
-  },
-  data() {
-    return {
-      timetableDays: [],
-      timetable: [],
-      calendarDays: [],
-      selectedDate: null,
-      popupVisible: false,
-      loadingTimetable: true,
-      weekDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-      currentWeek: new Date(),
-      currentMonth: new Date()
-    };
-  },
-  async mounted() {
-    await this.loadTimetable();
-    this.generateCalendarDays();
-  },
-  methods: {
-    weekRange() {
-      const startOfWeek = this.getStartOfWeek(new Date(this.currentWeek));
-      const endOfWeek = this.getEndOfWeek(new Date(this.currentWeek));
-
-      return `${startOfWeek.getDate()}.${startOfWeek.getMonth() + 1}. - ${endOfWeek.getDate()}.${endOfWeek.getMonth() + 1}.`;
-    },
-    monthAndYear() {
-      const month = this.currentMonth.toLocaleString('default', { month: 'long' });
-      const year = this.currentMonth.getFullYear();
-      return `${month} ${year}`;
-    },
-    async loadTimetable() {
-      this.loadingTimetable = true;
-      try {
-        const response = await this.fetchTimetable();
-        this.processTimetable(response);
-      } catch (error) {
-        console.error('Error fetching timetable:', error);
-      } finally {
-        this.loadingTimetable = false;
-      }
-    },
-    async fetchTimetable() {
-      // Mocked API response
-      return new Promise((resolve) => {
-        setTimeout(() => { // Spoofed data
-          resolve({
-            days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-            data: [
-              {
-                time: '08:00 - 09:00',
-                subjects: {
-                  Mon: 'Math',
-                  Tue: 'Science',
-                  Wed: 'History',
-                  Thu: 'PE',
-                  Fri: 'English',
-                },
-              },
-              {
-                time: '09:00 - 10:00',
-                subjects: {
-                  Mon: 'Biology',
-                  Tue: 'Chemistry',
-                  Wed: 'Physics',
-                  Thu: 'Music',
-                },
-              },
-            ],
-          });
-        }, 1000);
-      });
-    },
-    processTimetable(response) {
-      this.timetableDays = response.days;
-      this.timetable = response.data.map((slot) => ({
-        time: slot.time,
-        subjects: this.timetableDays.reduce((acc, day) => {
-          acc[day] = slot.subjects[day] || '';
-          return acc;
-        }, {}),
-      }));
-    },
-    generateCalendarDays() {
-      const firstDay = new Date(this.currentMonth.getFullYear(), this.currentMonth.getMonth(), 1);
-      const lastDay = new Date(this.currentMonth.getFullYear(), this.currentMonth.getMonth() + 1, 0);
-      const firstDayOfWeek = firstDay.getDay();
-
-      const days = [];
-      for (let i = 0; i < firstDayOfWeek; i++) {
-        days.push({ day: '', notifications: 0, isPlaceholder: true });
-      }
-      for (let i = 1; i <= lastDay.getDate(); i++) {
-        const notificationCount = Math.floor(Math.random() * 6); // Random notifications for demonstration
-        days.push({ day: i, notifications: notificationCount, isPlaceholder: false });
-      }
-
-      this.calendarDays = days;
-    },
-    getStartOfWeek(date) {
-      const day = date.getDay();
-      return new Date(date.setDate(date.getDate() - day + 1)); // Adjust for Monday as start of week
-    },
-    getEndOfWeek(date) {
-      const day = date.getDay();
-      return new Date(date.setDate(date.getDate() + (7 - day)));
-    },
-    loadPreviousWeek() {
-      this.currentWeek.setDate(this.currentWeek.getDate() - 7);
-      this.loadTimetable();
-    },
-    loadNextWeek() {
-      this.currentWeek.setDate(this.currentWeek.getDate() + 7);
-      this.loadTimetable();
-    },
-    loadPreviousMonth() {
-      this.currentMonth.setMonth(this.currentMonth.getMonth() - 1);
-      this.generateCalendarDays();
-    },
-    loadNextMonth() {
-      this.currentMonth.setMonth(this.currentMonth.getMonth() + 1);
-      this.generateCalendarDays();
-    },
-    getValidDayClass(date) {
-      if (date.isPlaceholder) return '';
-      if (date.notifications === 0) return 'bg-gray-700';
-      return '';
-    },
-    getNotificationClass(notificationCount) {
-      if (notificationCount === 1) return 'bg-sky-700';
-      if (notificationCount === 2) return 'bg-violet-600';
-      if (notificationCount === 3) return 'bg-fuchsia-600';
-      if (notificationCount === 4) return 'bg-pink-600';
-      return 'bg-red-600';
-    },
-    openPopup(date) {
-      if (!date.isPlaceholder && date.notifications > 0) {
-        this.selectedDate = date;
-        this.popupVisible = true;
-      }
-    },
-    closePopup() {
-      this.popupVisible = false;
-      this.selectedDate = null;
-    },
-  },
-};
-</script>

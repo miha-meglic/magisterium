@@ -100,77 +100,79 @@
   </MenuLayout>
 </template>
 
-<script>
+
+<script setup>
 import MenuLayout from '~/components/MenuLayout.vue';
 
-export default {
-  components: {
-    MenuLayout,
-  },
-  data() {
-    return {
-      recipients: [],
-      allUsers: [],
-      selectedRecipientIndex: null,
-      newMessage: '',
-      newMessagePopupVisible: false,
-    };
-  },
-  async mounted() {
-    await this.loadRecipients();
-    await this.loadAllUsers();
-  },
-  methods: {
-    async loadRecipients() {
-      // Simulated API call to fetch recipient list
-      this.recipients = [
-        { id: 1, name: 'Alice', messages: [{ sender: 'me', text: 'Hi Alice!' }] },
-        { id: 2, name: 'Bob', messages: [{ sender: 'Bob', text: 'Hey there!' }] },
-      ];
-    },
-    async loadAllUsers() {
-      // Simulated API call to fetch all users
-      this.allUsers = [
-        { id: 1, name: 'Alice' }, // Example existing user
-        { id: 2, name: 'Bob' }, // Example existing user
-        { id: 3, name: 'Charlie' },
-        { id: 4, name: 'Diana' },
-        { id: 5, name: 'Eve' },
-      ];
-    },
-    openChat(index) {
-      this.selectedRecipientIndex = index;
-    },
-    openNewMessagePopup() {
-      this.newMessagePopupVisible = true;
-    },
-    closeNewMessagePopup() {
-      this.newMessagePopupVisible = false;
-    },
-    selectRecipient(user) {
-      // Check if the user is already in the recipients list
-      const existingIndex = this.recipients.findIndex((recipient) => recipient.id === user.id);
-      if (existingIndex !== -1) {
-        // Open the existing chat
-        this.newMessagePopupVisible = false;
-        this.openChat(existingIndex);
-      } else {
-        // Add new recipient and open chat
-        const newRecipient = { id: user.id, name: user.name, messages: [] };
-        this.recipients.push(newRecipient);
-        this.newMessagePopupVisible = false;
-        this.openChat(this.recipients.length - 1);
-      }
-    },
-    sendMessage() {
-      if (this.newMessage.trim() && this.selectedRecipientIndex !== null) {
-        this.recipients[this.selectedRecipientIndex].messages.push({
-          sender: 'me',
-          text: this.newMessage,
-        });
-        this.newMessage = '';
-      }
-    },
-  },
+definePageMeta({
+  middleware: ['auth'],
+});
+
+const recipients = ref([]);
+const allUsers = ref([]);
+const selectedRecipientIndex = ref(null);
+const newMessage = ref('');
+const newMessagePopupVisible = ref(false);
+
+const loadRecipients = async () => {
+  // Simulated API call to fetch recipient list
+  recipients.value = [
+    { id: 1, name: 'Alice', messages: [{ sender: 'me', text: 'Hi Alice!' }] },
+    { id: 2, name: 'Bob', messages: [{ sender: 'Bob', text: 'Hey there!' }] },
+  ];
 };
+
+const loadAllUsers = async () => {
+  // Simulated API call to fetch all users
+  allUsers.value = [
+    { id: 1, name: 'Alice' }, // Example existing user
+    { id: 2, name: 'Bob' }, // Example existing user
+    { id: 3, name: 'Charlie' },
+    { id: 4, name: 'Diana' },
+    { id: 5, name: 'Eve' },
+  ];
+};
+
+const openChat = (index) => {
+  selectedRecipientIndex.value = index;
+};
+
+const openNewMessagePopup = () => {
+  newMessagePopupVisible.value = true;
+};
+
+const closeNewMessagePopup = () => {
+  newMessagePopupVisible.value = false;
+};
+
+const selectRecipient = (user) => {
+  // Check if the user is already in the recipients list
+  const existingIndex = recipients.value.findIndex((recipient) => recipient.id === user.id);
+  if (existingIndex !== -1) {
+    // Open the existing chat
+    newMessagePopupVisible.value = false;
+    openChat(existingIndex);
+  } else {
+    // Add new recipient and open chat
+    const newRecipient = { id: user.id, name: user.name, messages: [] };
+    recipients.value.push(newRecipient);
+    newMessagePopupVisible.value = false;
+    openChat(recipients.value.length - 1);
+  }
+};
+
+const sendMessage = () => {
+  if (newMessage.value.trim() && selectedRecipientIndex.value !== null) {
+    recipients.value[selectedRecipientIndex.value].messages.push({
+      sender: 'me',
+      text: newMessage.value,
+    });
+    newMessage.value = '';
+  }
+};
+
+onMounted(async () => {
+  await loadRecipients();
+  await loadAllUsers();
+});
 </script>
