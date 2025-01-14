@@ -1,3 +1,192 @@
+<script setup lang="ts">
+import MenuLayout from '~/components/MenuLayout.vue';
+import type { User, Tenant, Message} from '~/types.vue';
+import axios from 'axios';
+
+
+definePageMeta({
+  middleware: ['auth'],
+});
+
+const recipients = ref([]);
+const allUsers = ref([]);
+const selectedRecipientIndex = ref(null);
+let selectedUserId: string = ""
+const newMessage = ref('');
+const newMessagePopupVisible = ref(false);
+const config = useRuntimeConfig();
+const apiBaseUrl = config.public.apiBase;
+const apiBaseMessagingUrl = config.public.apiBaseMessaging;
+const recipientsMap = ref<Map<User, Message[]>>(new Map()); // Use a Map
+
+const loadMessagesForContact = async (contact: User): Promise<Message[] | null> => {
+  const selectedTenantCookie = useCookie('selectedTenant');
+  if (!selectedTenantCookie.value) {
+    console.warn("No tenant selected in cookie. Cannot load messages for", contact.id);
+    return null;
+  }
+
+  try {
+    const selectedTenant = selectedTenantCookie.value;
+    const response = await axios.get<Message[]>(`${apiBaseMessagingUrl}/message/${selectedTenant}/${contact.id}`, {
+      withCredentials: true
+    });
+    return response.data;
+  } catch (error) {
+    console.error(`Error loading messages for contact ${contact.id}:`, error);
+    if (axios.isAxiosError(error)) {
+      console.error("Axios error details:", error.response?.data || error.message);
+    }
+    return null;
+  }
+};
+
+const loadAllUsers = async () => {
+  const selectedTenantCookie = useCookie('selectedTenant');
+  const userCookie = useCookie('selectedUser')
+  if(userCookie.value)
+  {
+    selectedUserId = userCookie.value
+  }
+  if (!selectedTenantCookie.value) {
+    console.warn("No tenant selected in cookie. Cannot load users.");
+    allUsers.value = [];
+    return;
+  }
+
+  try {
+    const selectedTenant = selectedTenantCookie.value;
+    if (!selectedTenant || !selectedTenant) {
+      console.warn("Invalid tenant data in cookie. Cannot load users.");
+      allUsers.value = [];
+      return;
+    }
+    const response = await axios.get(apiBaseMessagingUrl+ '/contacts/' + selectedTenant, {
+      withCredentials: true
+    });
+
+    const filteredUsers = response.data.filter(user => user.id !== selectedUserId);
+    allUsers.value = filteredUsers.map((user) => ({ ...user, messages: null }));
+  } catch (error) {
+    console.error("Error loading recipients:", error);
+    allUsers.value = [];
+    if (axios.isAxiosError(error)) {
+      console.error("Axios error details:", error.response?.data || error.message);
+    }
+  }
+};
+
+const loadAllMessages = async () => {
+  if (allUsers.value.length === 0) {
+    return;
+  }
+
+  recipientsMap.value.clear();
+
+  await Promise.all(
+      allUsers.value.map(async (recipient) => {
+        const messages = await loadMessagesForContact(recipient);
+        if (messages) {
+          recipientsMap.value.set(recipient, messages);
+          recipients.value.push(recipient)
+        }
+      })
+  );
+};
+
+
+const openChat = (index) => {
+  selectedRecipientIndex.value = index;
+};
+
+const openNewMessagePopup = () => {
+  newMessagePopupVisible.value = true;
+};
+
+const closeNewMessagePopup = () => {
+  newMessagePopupVisible.value = false;
+};
+
+const selectRecipient = (user) => {
+  // Check if the user is already in the recipients list
+  const existingIndex = recipients.value.findIndex((recipient) => recipient.id === user.id);
+  if (existingIndex !== -1) {
+    // Open the existing chat
+    newMessagePopupVisible.value = false;
+    openChat(existingIndex);
+  } else {
+    // Add new recipient and open chat
+    const newRecipient = { id: user.id, name: user.name, messages: [] };
+    recipients.value.push(newRecipient);
+    newMessagePopupVisible.value = false;
+    openChat(recipients.value.length - 1);
+  }
+};
+
+const sendMessage = async () => {
+  if (newMessage.value.trim() && selectedRecipientIndex.value !== null && recipients.value.length > 0) {
+    const selectedRecipient = recipients.value[selectedRecipientIndex.value];
+    const selectedTenantCookie = useCookie('selectedTenant');
+
+    if (!selectedTenantCookie.value) {
+      console.warn("No tenant selected in cookie. Cannot send message.");
+      return;
+    }
+
+    try {
+      const selectedTenant = selectedTenantCookie.value;
+      const messageToSend = { content: newMessage.value.trim(), sender: '' };
+
+      const response = await axios.post<Message>(apiBaseMessagingUrl + '/message/' + selectedTenant + '/' + selectedRecipient.id,
+          messageToSend,
+          { withCredentials: true }
+      );
+
+      // Add the sent message to the local messages array
+      if (response.data) {
+        if(!recipientsMap.value.get(selectedRecipient))
+        {
+          recipientsMap.value.set(selectedRecipient, [])
+        }
+        messageToSend.sender = selectedUserId
+        recipientsMap.value.get(selectedRecipient).push(messageToSend);
+
+      } else {
+        console.error("No message data returned from API");
+      }
+      newMessage.value = ''; // Clear input field
+    } catch (error) {
+      console.error("Error sending message:", error);
+      if (axios.isAxiosError(error)) {
+        console.error("Axios error details:", error.response?.data || error.message);
+      }
+      // Handle error, e.g., display an error message to the user
+    }
+  }
+};
+
+const getMessagesForSelectedRecipient = () => {
+  if (selectedRecipientIndex.value !== null && recipients.value.length > 0) {
+    const recipient = recipients.value[selectedRecipientIndex.value];
+    const messages = recipientsMap.value.get(recipient);
+
+    if (messages) {
+      return messages.slice().sort((a, b) => {
+        const idA = typeof a.id === 'string' ? parseInt(a.id) : a.id;
+        const idB = typeof b.id === 'string' ? parseInt(b.id) : b.id;
+        return idA - idB
+      });
+    }
+  }
+  return null;
+};
+
+onMounted(async () => {
+  await loadAllUsers();
+  await loadAllMessages();
+
+});
+</script>
 <template>
   <MenuLayout title="Chat Room">
     <main class="flex min-w-300px w-[calc(100vw-30vw)] h-[calc(100vh-15vh)] bg-gray-800 text-white">
@@ -40,18 +229,18 @@
           <!-- Chat Messages -->
           <div class="flex-1 overflow-y-auto bg-gray-800 p-6 space-y-4">
             <div
-                v-for="(message, index) in recipients[selectedRecipientIndex].messages"
-                :key="index"
+                v-for="message in getMessagesForSelectedRecipient()"
+                :key="message.id"
                 class="flex"
             >
             <div
                 :class="{
-                'self-end right-0 text-right ml-auto bg-blue-600': message.sender === 'me',
+                'self-end right-0 text-right ml-auto bg-blue-600': message.sender === selectedUserId,
                 'self-start bg-gray-700': message.sender !== 'me',
               }"
                 class="px-4 py-3 rounded-lg max-w-[90%] text-wrap break-all"
             >
-              {{ message.text }}
+              {{ message.content }}
               </div>
             </div>
           </div>
@@ -101,78 +290,3 @@
 </template>
 
 
-<script setup>
-import MenuLayout from '~/components/MenuLayout.vue';
-
-definePageMeta({
-  middleware: ['auth'],
-});
-
-const recipients = ref([]);
-const allUsers = ref([]);
-const selectedRecipientIndex = ref(null);
-const newMessage = ref('');
-const newMessagePopupVisible = ref(false);
-
-const loadRecipients = async () => {
-  // Simulated API call to fetch recipient list
-  recipients.value = [
-    { id: 1, name: 'Alice', messages: [{ sender: 'me', text: 'Hi Alice!' }] },
-    { id: 2, name: 'Bob', messages: [{ sender: 'Bob', text: 'Hey there!' }] },
-  ];
-};
-
-const loadAllUsers = async () => {
-  // Simulated API call to fetch all users
-  allUsers.value = [
-    { id: 1, name: 'Alice' }, // Example existing user
-    { id: 2, name: 'Bob' }, // Example existing user
-    { id: 3, name: 'Charlie' },
-    { id: 4, name: 'Diana' },
-    { id: 5, name: 'Eve' },
-  ];
-};
-
-const openChat = (index) => {
-  selectedRecipientIndex.value = index;
-};
-
-const openNewMessagePopup = () => {
-  newMessagePopupVisible.value = true;
-};
-
-const closeNewMessagePopup = () => {
-  newMessagePopupVisible.value = false;
-};
-
-const selectRecipient = (user) => {
-  // Check if the user is already in the recipients list
-  const existingIndex = recipients.value.findIndex((recipient) => recipient.id === user.id);
-  if (existingIndex !== -1) {
-    // Open the existing chat
-    newMessagePopupVisible.value = false;
-    openChat(existingIndex);
-  } else {
-    // Add new recipient and open chat
-    const newRecipient = { id: user.id, name: user.name, messages: [] };
-    recipients.value.push(newRecipient);
-    newMessagePopupVisible.value = false;
-    openChat(recipients.value.length - 1);
-  }
-};
-
-const sendMessage = () => {
-  if (newMessage.value.trim() && selectedRecipientIndex.value !== null) {
-    recipients.value[selectedRecipientIndex.value].messages.push({
-      sender: 'me',
-      text: newMessage.value,
-    });
-    newMessage.value = '';
-  }
-};
-
-onMounted(async () => {
-  await loadRecipients();
-  await loadAllUsers();
-});
-</script>

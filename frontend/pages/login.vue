@@ -1,7 +1,7 @@
 
 <script setup>
 
-import {useRouter, useRuntimeConfig} from '#imports';
+import {useRuntimeConfig, navigateTo} from '#imports';
 import axios from 'axios';
 import {ref} from 'vue'
 
@@ -20,17 +20,18 @@ const registerEmail = ref('');
 const registerName = ref('');
 const registerPassword = ref('');
 const repeatPassword = ref('');
-const router = useRouter()
 
 const handleSubmit = async () => {
   try {
     const response = await axios.post(apiBaseUrl +'/auth/login', {
       email: email.value,
       password: password.value,
+    },
+    {
       withCredentials: true
     });
     console.log("Login successful", response.data);
-    router.push('/');
+    window.location.reload();
   } catch (error) {
     console.error('Login failed:', error);
     alert("Login failed. Check your credentials.");
@@ -64,7 +65,18 @@ const handleRegister = async () => {
 
 const signInWithSSO = () => {
   const authUrl = `${apiBaseUrl}/auth/github`;
-  window.open(authUrl, '_blank');
+  const extra = window.open(authUrl, '_blank');
+
+  if (extra && !extra.closed) {
+    const reloadAfterLogin = () => {
+      if (extra.closed) {
+        window.location.reload();
+      } else {
+        setTimeout(reloadAfterLogin, 1000); // Check again after 1 second
+      }
+    };
+    reloadAfterLogin();
+  }
 };
 </script>
 
