@@ -50,7 +50,7 @@ async function fetchTimetable(startDate: string, endDate: string) {
       return null;
     }
 
-    const response = await axios.post<TimetableEntry[]>(`${apiBaseScheduleUrl}/schedule/${selectedTenant}`, {
+    const response = await axios.post<TimetableEntry[]>(apiBaseScheduleUrl + '/schedule/' +selectedTenant, {
       from: startDate,
       to: endDate},
     {withCredentials: true},
@@ -80,16 +80,77 @@ function monthAndYear() {
 }
 
 function processTimetable(response) {
-  timetableDays.value = response.days;
-  timetable.value = response.map((slot) => ({
-    time: slot.time,
-    subjects: timetableDays.value.reduce((acc, day) => {
-      acc[day] = slot.subjects[day] || '';
-      return acc;
-    }, {}),
-  }));
+  // Reset Timetable Data
+  timetableDays.value = [];
+  timetable.value = [];
+
+  // Loop through each event in the response
+  for (const event of response) {
+    timetableDays.value = [];
+    timetable.value = [];
+
+    if (!response || response.length === 0) return; // Handle empty response
+
+    // Find min and max times
+    let minTime = new Date(response[0].start);
+    let maxTime = new Date(response[0].start);
+
+    for (const event of response) {
+      const startTime = new Date(event.start);
+      if (startTime < minTime) minTime = startTime;
+      if (startTime > maxTime) maxTime = startTime;
+
+      const eventDate = event.start.slice(0, 10);
+      if (!timetableDays.value.includes(getWeekday(new Date(eventDate)))) {
+        timetableDays.value.push(getWeekday(new Date(eventDate)));
+      }
+    }
+
+    // Round min/max to nearest hour
+    minTime.setMinutes(0, 0, 0);
+    maxTime.setMinutes(0, 0, 0);
+    maxTime.setHours(maxTime.getHours() + 1); // Round up to next hour
+
+    let currentTime = new Date(minTime);
+    while (currentTime <= maxTime) {
+      const timeString = currentTime.toISOString().slice(11, 16);
+      const timeSlot = { time: timeString, subjects: {} };
+      for (const day of timetableDays.value) {
+        timeSlot.subjects[day] = [];
+      }
+      timetable.value.push(timeSlot);
+      currentTime.setHours(currentTime.getHours() + 1);
+    }
+
+    for (const event of response) {
+      const eventStartTime = new Date(event.start);
+      const eventDate = getWeekday(new Date(event.start.slice(0, 10)));
+
+      // Find the correct timeslot based on range
+      for (const timeSlot of timetable.value) {
+        const slotStartTime = new Date(minTime);
+        const [hours, minutes] = timeSlot.time.split(':').map(Number);
+        slotStartTime.setHours(hours, minutes, 0, 0);
+        const slotEndTime = new Date(slotStartTime);
+        slotEndTime.setHours(slotEndTime.getHours() + 1);
+
+        if (eventStartTime >= slotStartTime && eventStartTime < slotEndTime) {
+          timeSlot.subjects[eventDate].push(event.classroomName);
+          break;
+        }
+      }
+    }
+  }
 }
 
+function getTimeTableDays()
+{
+  return timetableDays.value;
+}
+  function getWeekday(date: Date):string
+{
+  return date.toLocaleDateString('en-US',{weekday: 'short'});
+}
 function generateCalendarDays() {
   const firstDay = new Date(
       currentMonth.value.getFullYear(),
@@ -224,12 +285,12 @@ onMounted(async () => {
             <tr v-for="(timeSlot, index) in timetable" :key="index">
               <td class="border border-gray-600 bg-blue-900 px-4 py-2">{{ timeSlot.time }}</td>
               <td
-                  v-for="(subject, day) in timeSlot.subjects"
+                  v-for="day in getTimeTableDays()"
                   :key="day"
                   class="border border-gray-600 px-4 py-2"
-                  :class="{ 'bg-sky-600': subject }"
+                  :class="{ 'bg-sky-600': timeSlot.subjects[day] }"
               >
-                {{ subject }}
+                {{ timeSlot.subjects[day][0] || '' }}
               </td>
             </tr>
             </tbody>

@@ -47,8 +47,7 @@ const handleRegister = async () => {
     const response = await axios.post(apiBaseUrl +'/auth/register', {
       name: registerName.value,
       email: registerEmail.value,
-      password: registerPassword.value,
-      withCredentials: true
+      password: registerPassword.value
     });
     console.log('Registration successful:', response.data);
     alert("Registration successful");
