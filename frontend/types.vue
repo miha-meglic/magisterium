@@ -21,3 +21,9 @@ export interface Classroom {
   name: string
 }
 
+export interface TimetableEntry {
+  classroomId: string,
+  classroomName: string,
+  start: string,
+  end: string
+}

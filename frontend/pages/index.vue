@@ -1,6 +1,7 @@
-<script setup>
+<script setup lang="ts">
 import MenuLayout from '~/components/MenuLayout.vue';
-import { ref } from 'vue';
+import type { TimetableEntry }  from '~/types.vue';
+import axios from "axios";
 
 definePageMeta({
   middleware: ['auth'],
@@ -10,17 +11,22 @@ const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const currentWeek = ref(new Date()); // Must access `.value` when working with refs
 const currentMonth = ref(new Date()); // Same here
 
+const config = useRuntimeConfig();
 const timetableDays = ref([]);
 const timetable = ref([]);
 const calendarDays = ref([]);
 const selectedDate = ref(null);
 const popupVisible = ref(false);
 const loadingTimetable = ref(true);
+const apiBaseScheduleUrl = config.public.apiBaseSchedule;
 
 async function loadTimetable() {
   loadingTimetable.value = true;
   try {
-    const response = await fetchTimetable();
+    const startDate = getStartOfWeek(currentWeek.value).toISOString().slice(0, 10);
+    const endDate = getEndOfWeek(currentWeek.value).toISOString().slice(0, 10);
+
+    const response = await fetchTimetable(startDate, endDate);
     processTimetable(response);
   } catch (error) {
     console.error('Error fetching timetable:', error);
@@ -29,37 +35,36 @@ async function loadTimetable() {
   }
 }
 
-async function fetchTimetable() {
-  // Mocked API response
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-        data: [
-          {
-            time: '08:00 - 09:00',
-            subjects: {
-              Mon: 'Math',
-              Tue: 'Science',
-              Wed: 'History',
-              Thu: 'PE',
-              Fri: 'English',
-            },
-          },
-          {
-            time: '09:00 - 10:00',
-            subjects: {
-              Mon: 'Biology',
-              Tue: 'Chemistry',
-              Wed: 'Physics',
-              Thu: 'Music',
-            },
-          },
-        ],
-      });
-    }, 1000);
-  });
+
+async function fetchTimetable(startDate: string, endDate: string) {
+  const selectedTenantCookie = useCookie('selectedTenant');
+  if (!selectedTenantCookie.value) {
+    console.warn("No tenant selected in cookie. Cannot load schedule.");
+    return null;
+  }
+
+  try {
+    const selectedTenant = selectedTenantCookie.value;
+    if (!selectedTenant) {
+      console.warn("Invalid tenant data in cookie. Cannot load schedule.");
+      return null;
+    }
+
+    const response = await axios.post<TimetableEntry[]>(`${apiBaseScheduleUrl}/schedule/${selectedTenant}`, {
+      from: startDate,
+      to: endDate},
+    {withCredentials: true},
+    );
+    return response.data ? response.data : [];
+  } catch (error) {
+    console.error("Error fetching timetable:", error);
+    if (axios.isAxiosError(error)) {
+      console.error("Axios error details:", error.response?.data || error.message);
+    }
+    return null;
+  }
 }
+
 
 function weekRange() {
   const startOfWeek = getStartOfWeek(currentWeek.value);
@@ -76,7 +81,7 @@ function monthAndYear() {
 
 function processTimetable(response) {
   timetableDays.value = response.days;
-  timetable.value = response.data.map((slot) => ({
+  timetable.value = response.map((slot) => ({
     time: slot.time,
     subjects: timetableDays.value.reduce((acc, day) => {
       acc[day] = slot.subjects[day] || '';
