@@ -149,6 +149,7 @@ const sendMessage = async () => {
           recipientsMap.value.set(selectedRecipient, [])
         }
         messageToSend.sender = selectedUserId
+
         recipientsMap.value.get(selectedRecipient).push(messageToSend);
 
       } else {

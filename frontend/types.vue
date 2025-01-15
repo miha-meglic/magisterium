@@ -16,3 +16,8 @@ export interface Message {
   content: string,
   createdAt: string
 }
+export interface Classroom {
+  id: int,
+  name: string
+}
+
